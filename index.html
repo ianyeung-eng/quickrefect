@@ -64,7 +64,7 @@
   <canvas id="canvas"></canvas>
 
   <!-- 鏡頭反轉按鈕 -->
-  <button id="flipBtn">鏡頭反轉：關</button>
+  <button id="flipBtn">鏡頭反轉：開</button>
 
   <!-- 分數 -->
   <div id="ui" style="display:none;">分數：<span id="score">0</span></div>
@@ -130,10 +130,14 @@ const camera = new Camera(video, {
 });
 camera.start();
 
+// ✅ 立即同步按鈕狀態
+flipBtn.textContent = `鏡頭反轉：${isMirrored ? '開' : '關'}`;
+flipBtn.style.background = isMirrored ? '#00ff88' : 'rgba(255,255,255,0.9)';
+
 // 鏡頭反轉按鈕
 flipBtn.addEventListener('click', () => {
   isMirrored = !isMirrored;
-  flipBtn.textContent = `鏡頭反轉：${isMirrored ? '關' : '開'}`;
+  flipBtn.textContent = `鏡頭反轉：${isMirrored ? '開' : '關'}`;
   flipBtn.style.background = isMirrored ? '#00ff88' : 'rgba(255,255,255,0.9)';
 });
 
@@ -333,5 +337,5 @@ window.addEventListener('resize', () => {
 });
 </script>
 
-<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'99e6e3825a280930',t:'MTc2MzEyNzI5MS4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script><script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'99e6e511db09cf4c',t:'MTc2MzEyNzM1NS4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</body>
 </html>
