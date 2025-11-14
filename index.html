@@ -200,7 +200,7 @@ function onResults(results) {
 
   // 鏡頭反轉處理
   if (isMirrored) {
-    ctx.scale(-1, 1);
+    ctx.scale(1, -1);
     ctx.drawImage(results.image, -canvasWidth, 0, canvasWidth, canvasHeight);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
   } else {
@@ -336,5 +336,5 @@ window.addEventListener('resize', () => {
 });
 </script>
 
-</body>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'99e70219a8fdd173',t:'MTc2MzEyODU0NC4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
