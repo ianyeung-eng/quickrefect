@@ -93,7 +93,7 @@ canvas.width = canvasWidth;
 canvas.height = canvasHeight;
 
 // 預設鏡頭反轉
-let isMirrored = false;
+let isMirrored = true;
 let gameStarted = false;
 let score = 0;
 
@@ -126,6 +126,7 @@ const camera = new Camera(video, {
   width: 1280,
   height: 720,
   facingMode: 'user',  // 前置鏡頭
+
 });
 camera.start();
 
