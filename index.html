@@ -1,635 +1,132 @@
-<script type="text/javascript">
-        var gk_isXlsx = false;
-        var gk_xlsxFileLookup = {};
-        var gk_fileData = {};
-        function filledCell(cell) {
-          return cell !== '' && cell != null;
-        }
-        function loadFileData(filename) {
-        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
-            try {
-                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
-                var firstSheetName = workbook.SheetNames[0];
-                var worksheet = workbook.Sheets[firstSheetName];
-
-                // Convert sheet to JSON to filter blank rows
-                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
-                // Filter out blank rows (rows where all cells are empty, null, or undefined)
-                var filteredData = jsonData.filter(row => row.some(filledCell));
-
-                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
-                var headerRowIndex = filteredData.findIndex((row, index) =>
-                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
-                );
-                // Fallback
-                if (headerRowIndex === -1 || headerRowIndex > 25) {
-                  headerRowIndex = 0;
-                }
-
-                // Convert filtered JSON back to CSV
-                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
-                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
-                return csv;
-            } catch (e) {
-                console.error(e);
-                return "";
-            }
-        }
-        return gk_fileData[filename] || "";
-        }
-        </script><!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-TW">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Micro:bit 3D 立方體控制遊戲</title>
-    <style>
-        body { font-family: Arial, sans-serif; text-align: center; background: #ffffff; margin: 0; color: black; }
-        #gameArea { width: 100vw; height: 80vh; }
-        button { padding: 10px 20px; margin: 10px; background: #4CAF50; color: white; border: none; cursor: pointer; }
-        button:hover { background: #45a049; }
-        #status { color: #00008b; margin: 10px; }
-        #score { font-size: 20px; margin: 10px; }
-        #hp { font-size: 20px; margin: 10px; color: red; font-weight: bold; }
-        #gameOver { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 30px; color: red; display: none; z-index: 10; }
-        #infoPanel { 
-            position: fixed; right: 20px; top: 120px; width: 280px; background: rgba(255,255,255,0.95); 
-            padding: 15px; border: 2px solid #333; border-radius: 10px; font-size: 14px; z-index: 100; 
-            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
-        }
-        #infoPanel h3 { margin-top: 0; color: #333; }
-        #infoPanel div { margin-bottom: 15px; padding: 10px; border-left: 4px solid #007bff; background: #f8f9fa; }
-        #infoPanel img { float: left; margin: 0 10px 5px 0; border-radius: 5px; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>即時全身骨架追蹤（2025 最終修好版）</title>
+  <style>
+    body {font-family: Arial, sans-serif; text-align: center; background:#222; color:#fff; margin:0;}
+    #container {margin:30px auto; position:relative; width:640px; height:480px; background:#000; display:inline-block; overflow:hidden;}
+    canvas {position:absolute; top:0; left:0;}
+    button {margin:20px; padding:15px 30px; font-size:20px; cursor:pointer;}
+    #info {margin:20px; font-size:18px; min-height:30px;}
+    .warning {color:#ff4444;}
+  </style>
 </head>
 <body>
-    <h1>Micro:bit 3D 立方體控制遊戲</h1>
-    <p>連接 micro:bit 後，傾斜 micro:bit 控制立方體前後左右移動，躲避來自四方的三角錐體、快速球體與變色加速障礙物！<br>或使用鍵盤上下左右鍵控制。<br><span style="color:red;">小心綠色邊緣！</span></p>
 
-    <!-- 遊戲區域 -->
-    <div id="gameArea"></div>
-    <div id="gameOver">Game Over!</div>
+  <h1>電腦／手機全身骨架即時追蹤</h1>
+  <button id="startBtn">開始追蹤</button>
+  
+  <div id="container">
+    <video id="video" width="640" height="480" autoplay playsinline muted></video>
+    <canvas id="overlay" width="640" height="480"></canvas>
+  </div>
+  
+  <div id="info">請用 localhost 或 https 開啟此檔案</div>
 
-    <!-- 計分 & 血量 -->
-    <div id="score">分數: 0</div>
-    <div id="hp">血量: 100/100</div>
+  <!-- 2025 仍穩定的最新版 -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.21.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/pose@0.8/dist/teachablemachine-pose.min.js"></script>
 
-    <!-- 控制按鈕 -->
-    <button id="startBtn">開始遊戲</button>
-    <button id="connectBtn">連接 micro:bit</button>
-    <button id="disconnectBtn" disabled>斷開連接</button>
-    <div id="status">狀態：未連接</div>
-
-    <!-- 右方障礙物介紹面板 -->
-    <div id="infoPanel">
-        <h3>🛑 障礙物介紹</h3>
-        <div>
-            <img src="https://airquee.com/wp-content/uploads/2021/09/Blue-Paintball-Obstacle-Pyramid-1-300x225.png" width="80" height="60" alt="藍色三角錐">
-            <b>藍色三角錐</b><br>
-            速度: 0.013<br>
-            每 1 秒出現一次，從四方衝來！
-        </div>
-        <div>
-            <img src="https://m.media-amazon.com/images/I/61cS3atmRLL.jpg" width="80" height="60" alt="橙色球體">
-            <b>橙色球體</b><br>
-            速度: 0.075<br>
-            有 1.5 秒紅線預警，超快衝刺！
-        </div>
-        <div>
-            <img src="https://res.cloudinary.com/skyhighpartyrentals/image/upload/f_auto,c_auto,w_766,h_450/media/catalog/product/5/0/50ft-obstacle-bounce-house_1.jpg" width="80" height="60" alt="黃色圓柱">
-            <b>黃色 → 橙色圓柱</b><br>
-            初始黃色速度: 0.013<br>
-            0.5 秒後變橙色加速至 0.0225！
-        </div>
-    </div>
-
-    <script type="module">
-    import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
-
-    // 全域變數
-    let device, server, service, txCharacteristic, rxCharacteristic;
-    let gameRunning = false;
-    let score = 0;
-    let hp = 100;
-    let maxHp = 100;
-    let gameOver = false;
-    let scene, camera, renderer;
-    let cube, cubeHitbox;
-    let obstacleHitboxes = [], sphereHitboxes = [], yellowHitboxes = [];
-    let obstacles = [], sphereObstacles = [], yellowObstacles = [];
-    let lines = [];
-    let dx = 0, dz = 0;
-    const maxSpeed = 0.05;
-    const coneSpeed = 0.013;
-    const sphereSpeed = 0.075;
-    const yellowSpeed = 0.013;
-    const OBJECT_SCALE = 0.4;
-    const CUBE_SCALE = 0.6;
-    const HITBOX_SCALE = 0.6;
-    const SAFE_ZONE = 4.0; // 安全區邊界
-    const MAX_ZONE = 5.5; // 最大邊界 (防止飛脫)
-    const GENERATE_OFFSET = 1.2; // 生成外移距離 (2角色長度)
-    const GENERATE_EDGE = 5 + GENERATE_OFFSET; // 生成邊界
-
-    // 血量系統變數
-    let hpEl, scoreEl, statusEl, gameOverEl;
-    let inEdgeZone = false;
-    let damageInterval = null;
-    let recoverInterval = null;
-    let leftEdgeTime = 0;
-
-    // 鍵盤控制
-    const keys = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false };
-    let keyDx = 0, keyDz = 0;
-
-    // DOM 元素
-    hpEl = document.getElementById('hp');
-    scoreEl = document.getElementById('score');
-    statusEl = document.getElementById('status');
-    gameOverEl = document.getElementById('gameOver');
+  <script>
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('overlay');
+    const ctx = canvas.getContext('2d');
+    const info = document.getElementById('info');
     const startBtn = document.getElementById('startBtn');
-    const connectBtn = document.getElementById('connectBtn');
-    const disconnectBtn = document.getElementById('disconnectBtn');
 
-    // Web Bluetooth UART UUIDs
-    const UART_SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
-    const UART_TX_CHARACTERISTIC_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
-    const UART_RX_CHARACTERISTIC_UUID = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
-
-    // 更新血量顯示
-    function updateHp() {
-        hpEl.textContent = `血量: ${hp}/${maxHp}`;
+    // 檢查是否為安全上下文（必須）
+    if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+      info.innerHTML = '<span class="warning">錯誤：請用 localhost 或 https 開啟此檔案！<br>直接雙擊檔案會被瀏覽器阻擋攝影機</span>';
+      startBtn.disabled = true;
     }
 
-    // 扣血邏輯
-    function startDamage() {
-        if (!damageInterval) {
-            damageInterval = setInterval(() => {
-                hp = Math.max(0, hp - 5);
-                updateHp();
-                if (hp <= 0) endGame('血量耗盡！');
-            }, 500);
-        }
+    let model;
+
+    async function init() {
+      startBtn.disabled = true;
+      info.textContent = '載入模型中…（約 3~8 秒）';
+
+      try {
+        // 使用 Google 官方最穩的公開 PoseNet 模型
+        const modelURL = "https://storage.googleapis.com/teachablemachine-models/posenet/mobilenet/model.json";
+        const metadataURL = "https://storage.googleapis.com/teachablemachine-models/posenet/mobilenet/metadata.json";
+        
+        model = await tmPose.load(modelURL, metadataURL);
+        info.textContent = '模型載入完成！正在請求攝影機…';
+
+        // 關鍵：標準 getUserMedia + facingMode（手機前鏡頭）
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            width: { ideal: 640 },
+            height: { ideal: 480 },
+            facingMode: "user"   // 前鏡頭（手機必加）
+          },
+          audio: false
+        });
+
+        video.srcObject = stream;
+        video.onloadedmetadata = () => {
+          video.play();
+          info.textContent = '偵測中… 請站到鏡頭前，讓全身入鏡！';
+          loop();
+        };
+
+      } catch (err) {
+        console.error(err);
+        info.innerHTML = `<span class="warning">攝影機錯誤：<br>${err.message}</span>`;
+        startBtn.disabled = false;
+      }
     }
 
-    // 回復血量邏輯
-    function startRecover() {
-        if (!recoverInterval) {
-            recoverInterval = setInterval(() => {
-                hp = Math.min(maxHp, hp + 5);
-                updateHp();
-            }, 1000);
-        }
+    async function loop() {
+      await predict();
+      requestAnimationFrame(loop);
     }
 
-    // 停止扣血/回復
-    function stopDamage() {
-        clearInterval(damageInterval);
-        damageInterval = null;
-    }
+    async function predict() {
+      if (!model) return;
 
-    function stopRecover() {
-        clearInterval(recoverInterval);
-        recoverInterval = null;
-    }
+      try {
+        const { pose } = await model.estimatePose(video);
 
-    // Hitbox 函數 (不變)
-    function createHitboxForObject(mesh, color = 0xffff00, scale = 1.0, isWireframe = true) {
-        const size = new THREE.Vector3();
-        new THREE.Box3().setFromObject(mesh).getSize(size);
-        const hitboxGeometry = new THREE.BoxGeometry(size.x * scale, size.y * scale, size.z * scale);
-        const hitboxMaterial = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.4, wireframe: isWireframe });
-        const hitbox = new THREE.Mesh(hitboxGeometry, hitboxMaterial);
-        hitbox.position.copy(mesh.position);
-        hitbox.rotation.copy(mesh.rotation);
-        return hitbox;
-    }
+        // 畫攝影機畫面（鏡像翻轉）
+        ctx.save();
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.scale(-1, 1);
+        ctx.translate(-canvas.width, 0);
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        ctx.restore();
 
-    // 立方體 Hitbox
-    function createCubeHitbox() {
-        const scaledSize = 0.5 * CUBE_SCALE * HITBOX_SCALE;
-        const hitboxGeometry = new THREE.BoxGeometry(scaledSize, scaledSize, scaledSize);
-        const hitboxMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.4, wireframe: true });
-        cubeHitbox = new THREE.Mesh(hitboxGeometry, hitboxMaterial);
-        cubeHitbox.position.copy(cube.position);
-        scene.add(cubeHitbox);
-    }
+        // 畫骨架（也要跟著翻轉）
+        if (pose && pose.score > 0.3) {
+          ctx.save();
+          ctx.scale(-1, 1);
+          ctx.translate(-canvas.width, 0);
+          
+          tmPose.drawKeypoints(pose.keypoints, 0.6, ctx);
+          tmPose.drawSkeleton(pose.keypoints, 0.6, ctx);
+          
+          ctx.restore();
 
-    // 三角錐 Hitbox
-    function createConeHitbox(cone) {
-        const hitbox = createHitboxForObject(cone, 0x0000ff, 0.9);
-        scene.add(hitbox);
-        obstacleHitboxes.push(hitbox);
-    }
-
-    // 球體 Hitbox
-    function createSphereHitbox(sphere) {
-        const hitbox = createHitboxForObject(sphere, 0xffa500, 0.9);
-        scene.add(hitbox);
-        sphereHitboxes.push(hitbox);
-    }
-
-    // 黃色變橙色 Hitbox
-    function createYellowHitbox(yellow) {
-        const hitbox = createHitboxForObject(yellow, 0xffff00, 0.9);
-        scene.add(hitbox);
-        yellowHitboxes.push(hitbox);
-    }
-
-    // 初始化 3D 場景
-    function init3D() {
-        scene = new THREE.Scene();
-        scene.background = new THREE.Color(0xffffff);
-        camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        renderer = new THREE.WebGLRenderer();
-        renderer.setSize(window.innerWidth, window.innerHeight * 0.8);
-        renderer.shadowMap.enabled = true;
-        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-        document.getElementById('gameArea').appendChild(renderer.domElement);
-
-        // 燈光
-        const light = new THREE.DirectionalLight(0xffffff, 1.5);
-        light.position.set(5, 5, 5);
-        light.castShadow = true;
-        scene.add(light);
-        scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-
-        // 立方體
-        const geometry = new THREE.BoxGeometry(0.5, 0.5, 0.5);
-        const material = new THREE.MeshStandardMaterial({ color: 0xff0000 });
-        cube = new THREE.Mesh(geometry, material);
-        cube.castShadow = true;
-        cube.receiveShadow = true;
-        cube.position.set(0, 0, 0);
-        cube.scale.set(CUBE_SCALE, CUBE_SCALE, CUBE_SCALE);
-        scene.add(cube);
-
-        createCubeHitbox();
-
-        // 綠色平台
-        const planeGeometry = new THREE.PlaneGeometry(10, 10);
-        const planeMaterial = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
-        const plane = new THREE.Mesh(planeGeometry, planeMaterial);
-        plane.rotation.x = -Math.PI / 2;
-        plane.position.y = -0.25;
-        plane.receiveShadow = true;
-        scene.add(plane);
-
-        // 俯視相機
-        camera.position.set(0, 8, 6);
-        camera.lookAt(0, 0, 0);
-
-        animate();
-    }
-
-    // 動畫迴圈
-    function animate() {
-        requestAnimationFrame(animate);
-        if (gameRunning && !gameOver) {
-            updateCubePositionAndRotation();
-            updateObstacles();
-            updateSphereObstacles();
-            updateYellowObstacles();
-            checkEdgeDamage();
-        }
-        renderer.render(scene, camera);
-    }
-
-    // 檢查邊緣扣血
-    function checkEdgeDamage() {
-        const xAbs = Math.abs(cube.position.x);
-        const zAbs = Math.abs(cube.position.z);
-        inEdgeZone = (xAbs > SAFE_ZONE || zAbs > SAFE_ZONE);
-        if (inEdgeZone) {
-            stopRecover();
-            leftEdgeTime = Date.now();
-            startDamage();
+          info.textContent = `偵測成功！信心度：${pose.score.toFixed(2)}`;
         } else {
-            stopDamage();
-            if (Date.now() - leftEdgeTime > 2000) {
-                startRecover();
-            }
+          info.textContent = '搜尋人體中…（請站直、全身入鏡、光線充足）';
         }
+      } catch (e) {
+        console.error(e);
+      }
     }
 
-    // 更新立方體位置
-    function updateCubePositionAndRotation() {
-        keyDx = 0;
-        keyDz = 0;
-        if (keys.ArrowLeft) keyDx = -maxSpeed;
-        if (keys.ArrowRight) keyDx = maxSpeed;
-        if (keys.ArrowUp) keyDz = -maxSpeed;
-        if (keys.ArrowDown) keyDz = maxSpeed;
+    startBtn.addEventListener('click', init);
+  </script>
 
-        cube.position.x += dx + keyDx;
-        cube.position.z += dz + keyDz;
-        cubeHitbox.position.copy(cube.position);
-
-        // 邊界檢查
-        if (cube.position.x < -MAX_ZONE) cube.position.x = -MAX_ZONE;
-        if (cube.position.x > MAX_ZONE) cube.position.x = MAX_ZONE;
-        if (cube.position.z < -MAX_ZONE) cube.position.z = -MAX_ZONE;
-        if (cube.position.z > MAX_ZONE) cube.position.z = MAX_ZONE;
-
-        camera.position.x = cube.position.x;
-        camera.position.y = 8;
-        camera.position.z = cube.position.z + 6;
-        camera.lookAt(cube.position.x, 0, cube.position.z);
-    }
-
-    // 三角錐
-    function createObstacle() {
-        if (gameRunning && !gameOver) {
-            const geometry = new THREE.ConeGeometry(0.5, 1, 3);
-            const material = new THREE.MeshStandardMaterial({ color: 0x0000ff });
-            const cone = new THREE.Mesh(geometry, material);
-            cone.castShadow = true;
-            cone.receiveShadow = true;
-            cone.scale.set(OBJECT_SCALE, OBJECT_SCALE, OBJECT_SCALE);
-            const direction = Math.floor(Math.random() * 4);
-            cone.userData = { dx: 0, dz: 0 };
-            const rand = Math.random() * 4 - 2; // 調整隨機範圍
-            switch (direction) {
-                case 0: cone.position.set(-GENERATE_EDGE, 0, rand); cone.userData.dx = coneSpeed; break;
-                case 1: cone.position.set(GENERATE_EDGE, 0, rand); cone.userData.dx = -coneSpeed; break;
-                case 2: cone.position.set(rand, 0, GENERATE_EDGE); cone.userData.dz = -coneSpeed; break;
-                case 3: cone.position.set(rand, 0, -GENERATE_EDGE); cone.userData.dz = coneSpeed; break;
-            }
-            scene.add(cone);
-            obstacles.push(cone);
-            createConeHitbox(cone);
-        }
-    }
-
-    function updateObstacles() {
-        obstacles.forEach((obs, index) => {
-            obs.position.x += obs.userData.dx;
-            obs.position.z += obs.userData.dz;
-            obs.rotation.y += 0.02;
-            
-            if (obstacleHitboxes[index]) {
-                obstacleHitboxes[index].position.copy(obs.position);
-                obstacleHitboxes[index].rotation.copy(obs.rotation);
-            }
-            
-            const cubeHitboxBox = new THREE.Box3().setFromObject(cubeHitbox);
-            const obsBox = new THREE.Box3().setFromObject(obs);
-            if (cubeHitboxBox.intersectsBox(obsBox)) {
-                endGame();
-            }
-            
-            if (Math.abs(obs.position.x) > GENERATE_EDGE || Math.abs(obs.position.z) > GENERATE_EDGE) {
-                removeObstacle(obs, index, obstacleHitboxes, obstacles);
-            }
-        });
-    }
-
-    // 球體
-    function createSphereObstacle() {
-        if (gameRunning && !gameOver) {
-            const direction = Math.floor(Math.random() * 4);
-            let startPos = new THREE.Vector3();
-            let endPos = new THREE.Vector3();
-            let sphereDx = 0, sphereDz = 0;
-            const rand = Math.random() * 4 - 2; // 調整隨機範圍
-            switch (direction) {
-                case 0: startPos.set(-GENERATE_EDGE, 0, rand); endPos.set(GENERATE_EDGE, 0, startPos.z); sphereDx = sphereSpeed; break;
-                case 1: startPos.set(GENERATE_EDGE, 0, rand); endPos.set(-GENERATE_EDGE, 0, startPos.z); sphereDx = -sphereSpeed; break;
-                case 2: startPos.set(rand, 0, GENERATE_EDGE); endPos.set(startPos.x, 0, -GENERATE_EDGE); sphereDz = -sphereSpeed; break;
-                case 3: startPos.set(rand, 0, -GENERATE_EDGE); endPos.set(startPos.x, 0, GENERATE_EDGE); sphereDz = sphereSpeed; break;
-            }
-
-            const lineMaterial = new THREE.LineBasicMaterial({ color: 0xff0000 });
-            const points = [startPos, endPos];
-            const lineGeometry = new THREE.BufferGeometry().setFromPoints(points);
-            const line = new THREE.Line(lineGeometry, lineMaterial);
-            scene.add(line);
-            lines.push(line);
-
-            setTimeout(() => {
-                scene.remove(line);
-                lines.splice(lines.indexOf(line), 1);
-
-                const geometry = new THREE.SphereGeometry(0.5, 32, 32);
-                const material = new THREE.MeshStandardMaterial({ color: 0xffa500 });
-                const sphere = new THREE.Mesh(geometry, material);
-                sphere.castShadow = true;
-                sphere.receiveShadow = true;
-                sphere.position.copy(startPos);
-                sphere.scale.set(OBJECT_SCALE, OBJECT_SCALE, OBJECT_SCALE);
-                sphere.userData = { dx: sphereDx, dz: sphereDz };
-                scene.add(sphere);
-                sphereObstacles.push(sphere);
-                createSphereHitbox(sphere);
-            }, 1500);
-        }
-    }
-
-    function updateSphereObstacles() {
-        sphereObstacles.forEach((obs, index) => {
-            obs.position.x += obs.userData.dx;
-            obs.position.z += obs.userData.dz;
-            
-            if (sphereHitboxes[index]) {
-                sphereHitboxes[index].position.copy(obs.position);
-            }
-            
-            const cubeHitboxBox = new THREE.Box3().setFromObject(cubeHitbox);
-            const obsBox = new THREE.Box3().setFromObject(obs);
-            if (cubeHitboxBox.intersectsBox(obsBox)) {
-                endGame();
-            }
-            
-            if (Math.abs(obs.position.x) > GENERATE_EDGE || Math.abs(obs.position.z) > GENERATE_EDGE) {
-                removeObstacle(obs, index, sphereHitboxes, sphereObstacles);
-            }
-        });
-    }
-
-    // 黃色變橙色障礙物
-    function createYellowObstacle() {
-        if (gameRunning && !gameOver) {
-            const geometry = new THREE.CylinderGeometry(0.3, 0.3, 0.6, 8);
-            const material = new THREE.MeshStandardMaterial({ color: 0xffff00 });
-            const yellow = new THREE.Mesh(geometry, material);
-            yellow.castShadow = true;
-            yellow.receiveShadow = true;
-            yellow.scale.set(OBJECT_SCALE, OBJECT_SCALE, OBJECT_SCALE);
-            const direction = Math.floor(Math.random() * 4);
-            yellow.userData = { dx: 0, dz: 0, activated: false };
-            const rand = Math.random() * 4 - 2; // 調整隨機範圍
-            switch (direction) {
-                case 0: yellow.position.set(-GENERATE_EDGE, 0, rand); yellow.userData.dx = yellowSpeed; break;
-                case 1: yellow.position.set(GENERATE_EDGE, 0, rand); yellow.userData.dx = -yellowSpeed; break;
-                case 2: yellow.position.set(rand, 0, GENERATE_EDGE); yellow.userData.dz = -yellowSpeed; break;
-                case 3: yellow.position.set(rand, 0, -GENERATE_EDGE); yellow.userData.dz = yellowSpeed; break;
-            }
-            scene.add(yellow);
-            yellowObstacles.push(yellow);
-            createYellowHitbox(yellow);
-
-            setTimeout(() => {
-                if (yellowObstacles.includes(yellow)) {
-                    yellow.material.color.set(0xffa500);
-                    yellow.userData.dx = Math.sign(yellow.userData.dx) * 0.018;
-                    yellow.userData.dz = Math.sign(yellow.userData.dz) * 0.018;
-                    yellow.userData.dx *= 1.25;
-                    yellow.userData.dz *= 1.25;
-                    yellow.userData.activated = true;
-                    if (yellowHitboxes[yellowObstacles.indexOf(yellow)]) {
-                        yellowHitboxes[yellowObstacles.indexOf(yellow)].material.color.set(0xffa500);
-                    }
-                }
-            }, 500);
-        }
-    }
-
-    function updateYellowObstacles() {
-        yellowObstacles.forEach((obs, index) => {
-            obs.position.x += obs.userData.dx;
-            obs.position.z += obs.userData.dz;
-            obs.rotation.y += 0.03;
-            
-            if (yellowHitboxes[index]) {
-                yellowHitboxes[index].position.copy(obs.position);
-                yellowHitboxes[index].rotation.copy(obs.rotation);
-            }
-            
-            const cubeHitboxBox = new THREE.Box3().setFromObject(cubeHitbox);
-            const obsBox = new THREE.Box3().setFromObject(obs);
-            if (cubeHitboxBox.intersectsBox(obsBox)) {
-                endGame();
-            }
-            
-            if (Math.abs(obs.position.x) > GENERATE_EDGE || Math.abs(obs.position.z) > GENERATE_EDGE) {
-                removeObstacle(obs, index, yellowHitboxes, yellowObstacles);
-            }
-        });
-    }
-
-    // 統一移除函數
-    function removeObstacle(obs, index, hitboxArray, objArray) {
-        scene.remove(obs);
-        if (hitboxArray[index]) scene.remove(hitboxArray[index]);
-        objArray.splice(index, 1);
-        hitboxArray.splice(index, 1);
-        score++;
-        scoreEl.textContent = `分數: ${score}`;
-    }
-
-    function endGame(msg = '遊戲結束！') {
-        gameOver = true;
-        gameRunning = false;
-        statusEl.textContent = `${msg} 最終分數: ${score}`;
-        gameOverEl.style.display = 'block';
-        stopDamage();
-        stopRecover();
-    }
-
-    // 連接 micro:bit
-    async function connectMicrobit() {
-        try {
-            statusEl.textContent = '搜尋 micro:bit...';
-            device = await navigator.bluetooth.requestDevice({
-                filters: [{ namePrefix: 'BBC micro:bit' }],
-                optionalServices: [UART_SERVICE_UUID]
-            });
-            server = await device.gatt.connect();
-            service = await server.getPrimaryService(UART_SERVICE_UUID);
-            txCharacteristic = await service.getCharacteristic(UART_TX_CHARACTERISTIC_UUID);
-            await txCharacteristic.startNotifications();
-            txCharacteristic.addEventListener('characteristicvaluechanged', handleReceivedData);
-            rxCharacteristic = await service.getCharacteristic(UART_RX_CHARACTERISTIC_UUID);
-            connectBtn.disabled = true;
-            disconnectBtn.disabled = false;
-            statusEl.textContent = '已連接 micro:bit';
-        } catch (error) {
-            statusEl.textContent = `連接失敗: ${error.message}`;
-            console.error('Bluetooth 連接錯誤:', error);
-        }
-    }
-
-    // 斷開連接
-    function disconnectMicrobit() {
-        if (device && device.gatt.connected) {
-            device.gatt.disconnect();
-            statusEl.textContent = '已斷開連接';
-            connectBtn.disabled = false;
-            disconnectBtn.disabled = true;
-        }
-    }
-
-    // 處理接收數據（micro:bit）
-    function handleReceivedData(event) {
-        let receivedData = new Uint8Array(event.target.value.buffer);
-        let receivedString = new TextDecoder().decode(receivedData).trim();
-        if (receivedString.includes('+')) {
-            let [xStr, yStr] = receivedString.split('+');
-            let x = parseInt(xStr);
-            let y = parseInt(yStr);
-            if (!isNaN(x) && !isNaN(y)) {
-                statusEl.textContent = `收到座標: X=${x}, Y=${y}`;
-                dx = (Math.abs(x) < 100) ? 0 : (x / 1024) * maxSpeed;
-                dz = (Math.abs(y) < 100) ? 0 : (y / 1024) * maxSpeed;
-            }
-        }
-    }
-
-    // 重置遊戲
-    function resetGame() {
-        gameRunning = true;
-        gameOver = false;
-        gameOverEl.style.display = 'none';
-        score = 0;
-        hp = maxHp;
-        scoreEl.textContent = `分數: ${score}`;
-        updateHp();
-        stopDamage();
-        stopRecover();
-        leftEdgeTime = 0;
-        inEdgeZone = false;
-        
-        [obstacles, sphereObstacles, yellowObstacles].forEach(arr => arr.forEach(o => scene.remove(o)));
-        [obstacleHitboxes, sphereHitboxes, yellowHitboxes].forEach(arr => arr.forEach(h => scene.remove(h)));
-        lines.forEach(l => scene.remove(l));
-        
-        obstacles = sphereObstacles = yellowObstacles = [];
-        obstacleHitboxes = sphereHitboxes = yellowHitboxes = [];
-        lines = [];
-        
-        cube.position.set(0, 0, 0);
-        cubeHitbox.position.copy(cube.position);
-        
-        statusEl.textContent = '遊戲開始！傾斜 micro:bit 或使用鍵盤上下左右控制立方體';
-    }
-
-    // 鍵盤事件監聽
-    document.addEventListener('keydown', (event) => {
-        if (event.code in keys) keys[event.code] = true;
-    });
-
-    document.addEventListener('keyup', (event) => {
-        if (event.code in keys) keys[event.code] = false;
-    });
-
-    // 啟動
-    if (typeof THREE === 'undefined') {
-        console.error('Three.js 未載入');
-        statusEl.textContent = '錯誤：Three.js 未載入';
-    } else {
-        console.log('Three.js 已載入');
-        init3D();
-    }
-
-    // 定時生成障礙物
-    setInterval(createObstacle, 1000);
-    setInterval(createSphereObstacle, 5000);
-    setInterval(createYellowObstacle, 3000);
-
-    // 按鈕事件
-    startBtn.addEventListener('click', resetGame);
-    connectBtn.addEventListener('click', connectMicrobit);
-    disconnectBtn.addEventListener('click', disconnectMicrobit);
-    </script>
+  <div style="margin:30px; font-size:14px; color:#aaa;">
+    使用方法：<br>
+    1. 用 VS Code Live Server、Python http.server、或任何本機 server 開啟<br>
+    2. 按「開始追蹤」→ 允許攝影機 → 站到鏡頭前<br>
+    3. 綠色線條 + 紅點 = 全身骨架
+  </div>
 </body>
 </html>
