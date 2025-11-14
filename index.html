@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>雙手啟動！雙球挑戰手捉遊戲（黃球任意同時觸碰版）</title>
+  <title>雙手啟動！雙球挑戰手捉遊戲</title>
   <style>
     body { margin:0; background:#000; overflow:hidden; font-family:Arial, sans-serif; }
     #container { position: relative; width: 100vw; height: 100vh; }
@@ -15,7 +15,7 @@
       position: absolute;
       top: 20px; left: 20px;
       padding: 12px 20px;
-      background: rgba(255,255,255,0.9);
+      background: #00ff88;
       color: #000;
       border: none;
       border-radius: 50px;
@@ -25,7 +25,7 @@
       cursor: pointer;
       box-shadow: 0 4px 15px rgba(0,0,0,0.3);
     }
-    #flipBtn:hover { background: #fff; }
+    #flipBtn:hover { background: #00ffaa; }
 
     /* 分數 */
     #ui {
@@ -41,7 +41,7 @@
       backdrop-filter: blur(8px);
     }
 
-    /* 開場雙紅球提示 */
+    /* 開場提示 */
     #readyText {
       position: absolute;
       top: 50%; left: 50%;
@@ -64,13 +64,13 @@
   <canvas id="canvas"></canvas>
 
   <!-- 鏡頭反轉按鈕 -->
-  <button id="flipBtn">🔄 鏡頭反轉：關</button>
+  <button id="flipBtn">鏡頭反轉：關</button>
 
-  <!-- 分數（遊戲開始後才顯示） -->
+  <!-- 分數 -->
   <div id="ui" style="display:none;">分數：<span id="score">0</span></div>
 
-  <!-- 雙手啟動提示 -->
-  <div id="readyText">請用<br><b>左手碰左邊紅球</b>＋<b>右手碰右邊紅球</b><br>同時啟動遊戲！</div>
+  <!-- 啟動提示 -->
+  <div id="readyText">請用<br><b>任意兩手同時觸碰兩個紅球</b><br>即可啟動遊戲！</div>
 </div>
 
 <!-- MediaPipe -->
@@ -92,7 +92,8 @@ let canvasHeight = window.innerHeight;
 canvas.width = canvasWidth;
 canvas.height = canvasHeight;
 
-let isMirrored = false;
+// 預設鏡頭反轉
+let isMirrored = true;
 let gameStarted = false;
 let score = 0;
 
@@ -104,7 +105,7 @@ const startBalls = [
   { x: startRightX, y: canvasHeight / 2, radius: 90, touched: false }
 ];
 
-// 雙黃球系統
+// 目標球系統
 let targets = [];
 let isDoubleMode = false;
 
@@ -117,7 +118,7 @@ pose.setOptions({
 });
 pose.onResults(onResults);
 
-// 立即開啟鏡頭
+// 開啟鏡頭
 const camera = new Camera(video, {
   onFrame: async () => {
     await pose.send({image: video});
@@ -130,7 +131,7 @@ camera.start();
 // 鏡頭反轉按鈕
 flipBtn.addEventListener('click', () => {
   isMirrored = !isMirrored;
-  flipBtn.textContent = `🔄 鏡頭反轉：${isMirrored ? '開' : '關'}`;
+  flipBtn.textContent = `鏡頭反轉：${isMirrored ? '關' : '開'}`;
   flipBtn.style.background = isMirrored ? '#00ff88' : 'rgba(255,255,255,0.9)';
 });
 
@@ -138,8 +139,9 @@ function getDisplayX(rawX) {
   return isMirrored ? canvasWidth - rawX : rawX;
 }
 
+// 通用觸碰檢測（任意手指）
 function checkHandTouch(landmarks, ballX, ballY) {
-  const fingers = [15, 17, 19, 16, 18, 20];  // 所有手指尖
+  const fingers = [15,17,19,16,18,20]; // 左+右手食指、中指、無名指尖
   for (let i of fingers) {
     const p = landmarks[i];
     if (!p || p.visibility < 0.3) continue;
@@ -157,25 +159,20 @@ function checkSingleTouch(landmarks) {
   return checkHandTouch(landmarks, targets[0].displayX, targets[0].y);
 }
 
+// 生成目標球
 function spawnTargets() {
   targets = [];
   if (Math.random() < 0.3) {  // 30% 雙黃球
     isDoubleMode = true;
     const ball1 = {
-      x: 120 + Math.random() * (canvasWidth * 0.3),  // 左側
+      x: 120 + Math.random() * (canvasWidth * 0.3),
       y: 120 + Math.random() * (canvasHeight - 240),
-      displayX: 0,
-      radius: 75,
-      active: true,
-      touched: false
+      displayX: 0, radius: 75, active: true, touched: false
     };
     const ball2 = {
-      x: canvasWidth * 0.6 + Math.random() * (canvasWidth * 0.3),  // 右側
+      x: canvasWidth * 0.6 + Math.random() * (canvasWidth * 0.3),
       y: 120 + Math.random() * (canvasHeight - 240),
-      displayX: 0,
-      radius: 75,
-      active: true,
-      touched: false
+      displayX: 0, radius: 75, active: true, touched: false
     };
     ball1.displayX = getDisplayX(ball1.x);
     ball2.displayX = getDisplayX(ball2.x);
@@ -185,10 +182,7 @@ function spawnTargets() {
     const ball = {
       x: 80 + Math.random() * (canvasWidth - 160),
       y: 80 + Math.random() * (canvasHeight - 160),
-      displayX: 0,
-      radius: 80,
-      active: true,
-      touched: false
+      displayX: 0, radius: 80, active: true, touched: false
     };
     ball.displayX = getDisplayX(ball.x);
     targets.push(ball);
@@ -199,6 +193,7 @@ function onResults(results) {
   ctx.save();
   ctx.clearRect(0, 0, canvasWidth, canvasHeight);
 
+  // 鏡頭反轉處理
   if (isMirrored) {
     ctx.scale(-1, 1);
     ctx.drawImage(results.image, -canvasWidth, 0, canvasWidth, canvasHeight);
@@ -214,19 +209,20 @@ function onResults(results) {
     drawLandmarks(ctx, displayLandmarks, {color: '#FF00FF', radius: 5});
 
     if (!gameStarted) {
-      // 啟動階段（紅球）
-      const leftTouch = checkHandTouch(lm, startBalls[0].x, startBalls[0].y);  // 紅球不分左右手
-      const rightTouch = checkHandTouch(lm, startBalls[1].x, startBalls[1].y);
-      startBalls[0].touched = leftTouch;
-      startBalls[1].touched = rightTouch;
+      // 啟動階段：任意兩手同時碰紅球
+      const touch1 = checkHandTouch(lm, startBalls[0].x, startBalls[0].y);
+      const touch2 = checkHandTouch(lm, startBalls[1].x, startBalls[1].y);
+      startBalls[0].touched = touch1;
+      startBalls[1].touched = touch2;
 
+      // 畫紅球
       startBalls.forEach(ball => {
-        const displayBallX = getDisplayX(ball.x);
+        const dx = getDisplayX(ball.x);
         ctx.fillStyle = ball.touched ? '#ff00ff' : '#ff4444';
         ctx.shadowBlur = 30;
         ctx.shadowColor = ball.touched ? '#ff00ff' : '#ff0000';
         ctx.beginPath();
-        ctx.arc(displayBallX, ball.y, ball.radius, 0, Math.PI * 2);
+        ctx.arc(dx, ball.y, ball.radius, 0, Math.PI * 2);
         ctx.fill();
         ctx.shadowBlur = 0;
         ctx.strokeStyle = '#ffffff';
@@ -234,7 +230,7 @@ function onResults(results) {
         ctx.stroke();
       });
 
-      if (leftTouch && rightTouch) {
+      if (touch1 && touch2) {
         gameStarted = true;
         readyText.style.display = 'none';
         ui.style.display = 'block';
@@ -247,13 +243,11 @@ function onResults(results) {
       let scored = false;
 
       if (isDoubleMode) {
-        // 🔥 黃球：任意手同時觸碰兩個球
-        const touch1 = checkHandTouch(lm, targets[0].displayX, targets[0].y);
-        const touch2 = checkHandTouch(lm, targets[1].displayX, targets[1].y);
-        targets[0].touched = touch1;
-        targets[1].touched = touch2;
-
-        if (touch1 && touch2) {
+        const t1 = checkHandTouch(lm, targets[0].displayX, targets[0].y);
+        const t2 = checkHandTouch(lm, targets[1].displayX, targets[1].y);
+        targets[0].touched = t1;
+        targets[1].touched = t2;
+        if (t1 && t2) {
           score += 2;
           scored = true;
         }
@@ -267,39 +261,39 @@ function onResults(results) {
         scoreEl.textContent = score;
         spawnTargets();
 
+        // 得分動畫
         scoreEl.style.transform = 'scale(2) rotate(360deg)';
         scoreEl.style.color = isDoubleMode ? '#ffd700' : '#00ff88';
-        const addScore = isDoubleMode ? 2 : 1;
-        scoreEl.innerHTML = `+${addScore}!`;
+        const add = isDoubleMode ? 2 : 1;
+        scoreEl.innerHTML = `+${add}!`;
         setTimeout(() => {
           scoreEl.innerHTML = score;
-          scoreEl.style.transform = 'scale(1) rotate(0deg)';
+          scoreEl.style.transform = 'scale(1)';
           scoreEl.style.color = 'white';
         }, 500);
       }
 
       // 畫目標球
-      targets.forEach((ball, index) => {
+      targets.forEach((ball, i) => {
         if (!ball.active) return;
-
         const isYellow = isDoubleMode;
-        const mainColor = isYellow ? (ball.touched ? '#ffff99' : '#ffff00') : '#00ff00';
-        const glowColor = isYellow ? (ball.touched ? '#ffff00' : '#ffd700') : '#00ff00';
-        const borderColor = isYellow ? '#ffaa00' : '#00ff88';
+        const main = isYellow ? (ball.touched ? '#ffff99' : '#ffff00') : '#00ff00';
+        const glow = isYellow ? (ball.touched ? '#ffff00' : '#ffd700') : '#00ff00';
+        const border = isYellow ? '#ffaa00' : '#00ff88';
 
-        ctx.fillStyle = mainColor;
+        ctx.fillStyle = main;
         ctx.shadowBlur = 60;
-        ctx.shadowColor = glowColor;
+        ctx.shadowColor = glow;
         ctx.beginPath();
         ctx.arc(ball.displayX, ball.y, ball.radius, 0, Math.PI * 2);
         ctx.fill();
 
         ctx.lineWidth = 18;
-        ctx.strokeStyle = borderColor;
+        ctx.strokeStyle = border;
         ctx.stroke();
         ctx.shadowBlur = 0;
 
-        const pulse = Math.sin(Date.now() * 0.015 + index) * 8 + ball.radius;
+        const pulse = Math.sin(Date.now() * 0.015 + i) * 8 + ball.radius;
         ctx.beginPath();
         ctx.arc(ball.displayX, ball.y, pulse, 0, Math.PI * 2);
         ctx.strokeStyle = '#ffffff';
@@ -308,10 +302,10 @@ function onResults(results) {
 
         if (isYellow) {
           ctx.fillStyle = '#ff0000';
-          ctx.font = 'bold 24px Arial';
+          ctx.font = 'bold 28px Arial';
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
-          ctx.fillText('雙', ball.displayX, ball.y);  // 只標記 '雙' 不分左右
+          ctx.fillText('雙', ball.displayX, ball.y);
         }
       });
     }
