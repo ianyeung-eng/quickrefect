@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>雙手啟動！雙球挑戰手捉遊戲</title>
+  <title>雙手啟動！雙球挑戰手捉遊戲（鏡頭反轉 + 任意雙觸版）</title>
   <style>
     body { margin:0; background:#000; overflow:hidden; font-family:Arial, sans-serif; }
     #container { position: relative; width: 100vw; height: 100vh; }
@@ -124,15 +124,9 @@ const camera = new Camera(video, {
     await pose.send({image: video});
   },
   width: 1280,
-  height: 720,
-  facingMode: 'user',  // 前置鏡頭
-  mirrored: false       // ✅ 一開始就鏡像反轉！
+  height: 720
 });
 camera.start();
-
-// ✅ 立即同步按鈕狀態
-flipBtn.textContent = `鏡頭反轉：${isMirrored ? '開' : '關'}`;
-flipBtn.style.background = isMirrored ? '#00ff88' : 'rgba(255,255,255,0.9)';
 
 // 鏡頭反轉按鈕
 flipBtn.addEventListener('click', () => {
@@ -201,7 +195,7 @@ function onResults(results) {
 
   // 鏡頭反轉處理
   if (isMirrored) {
-    ctx.scale(1, -1);
+    ctx.scale(-1, 1);
     ctx.drawImage(results.image, -canvasWidth, 0, canvasWidth, canvasHeight);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
   } else {
